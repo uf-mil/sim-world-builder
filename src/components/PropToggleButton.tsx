@@ -1,7 +1,7 @@
-function PropToggleButton({ label, index, enabledStates, setEnabledStates }: { label: string, index: number, enabledStates: Array<boolean>, setEnabledStates: any }) {
+function PropToggleButton({ label, index, enabledStates, setEnabledStates }: { label: string, index: number, enabledStates: Array<boolean>, setEnabledStates: React.Dispatch<React.SetStateAction<boolean[]>> }) {
     function toggleEnable() {
-        setEnabledStates((prev) => {
-            const newEnabledStates = [...prev];
+        setEnabledStates((prevStates: boolean[]) => {
+            const newEnabledStates = [...prevStates];
             newEnabledStates[index] = !newEnabledStates[index];
 
             return newEnabledStates;

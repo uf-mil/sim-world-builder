@@ -1,11 +1,24 @@
 import './App.css'
 import PropToggleButton from './components/PropToggleButton';
 import DownloadButton from './components/DownloadButton';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 function App() {
   const props = ['Test 1', 'Test 2', 'Test 3'];
-  const [enabledStates, setEnabledStates] = useState([true, true, true]);
+  const [enabledStates, setEnabledStates] = useState<boolean[]>([]);
+
+  useEffect(() => {
+    for (let i = 0; i < props.length; i++) {
+      setEnabledStates((prevStates: boolean[]) => {
+        const newEnabledStates = [...prevStates];
+        newEnabledStates.push(true);
+
+        return newEnabledStates;
+      })
+    }
+  }, [])
+
+
 
   return (
     <div className="flex flex-col justify-center items-center">
