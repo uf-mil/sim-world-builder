@@ -1,42 +1,12 @@
-import { useLoader } from '@react-three/fiber';
-import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader';
-import { MeshStandardMaterial, TextureLoader } from 'three';
+import { ColladaModel } from "../ColladaModel";
 
-import { useMemo } from 'react';
-
-export function Buoy(props) {
-    // Import custom model from public/models/
-    const model = useLoader(ColladaLoader, '/models/buoy.dae');
-
-    // Load texture file from public/textures/
-    const texture = useLoader(TextureLoader, '/textures/buoy_texture.png');
-
-    // useMemo only runs when the dependencies are updated which helps with performance
-    const buoy = useMemo(() => {
-        // Create a custom material from the loaded texture
-        const material = new MeshStandardMaterial({
-            map: texture,
-        });
-
-        // Apply the custom material to each child mesh of the custom model
-        model.scene.traverse((child) => {
-            if (child.isMesh) {
-                child.material = material;
-
-                child.castShadow = true;
-                child.receiveShadow = true;
-            }
-        });
-
-        return model;
-    }, [model, texture]);
-
+export function Buoy({ position }) {
     return (
-        <primitive
-            object={buoy.scene}
-            {...props}
-            dispose={null}
+        <ColladaModel
+            modelPath={"/models/buoy.dae"}
+            texturePath={"/textures/buoy_texture.png"}
             scale={[5, 5, 5]}
+            position={position}
         />
     )
 }
