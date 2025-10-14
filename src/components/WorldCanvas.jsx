@@ -1,6 +1,7 @@
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Buoy } from "./models/Buoy";
+import { ColladaModel } from "./ColladaModel";
 
 export default function WorldCanvas() {
     return (
@@ -12,6 +13,13 @@ export default function WorldCanvas() {
 
                 <Buoy position={[0, 0, 0]} />
                 {/* <Buoy position={[0, 1, 0]} /> */}
+
+                <ColladaModel
+                    modelPath={'/models/woollett_pool.dae'}
+                    texturePath={'/textures/woollett_pool.png'}
+                    scale={[1, 1, 1]}
+                    position={[0, 0, 0]}
+                />
 
                 <OrbitControls />
             </Canvas >
