@@ -4,6 +4,8 @@ import { MeshStandardMaterial, TextureLoader } from 'three';
 
 import { useMemo, useState } from 'react';
 
+import { useColladaModel } from '../scripts/useColladaModel';
+
 export function ColladaModel({ modelPath, texturePath, scale, position, isProp = false }) {
     // Import custom model from public/models/
     const model = useLoader(ColladaLoader, modelPath);

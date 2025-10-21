@@ -11,9 +11,22 @@ export default function WorldCanvas() {
                 <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} decay={0} intensity={Math.PI} />
                 <pointLight position={[-10, -10, -10]} decay={0} intensity={Math.PI} />
 
-                <Buoy position={[0, 0, 0]} />
+                {/* <Buoy position={[0, 0, 0]} /> */}
                 {/* <Buoy position={[0, 1, 0]} /> */}
-
+                <ColladaModel
+                    modelPath={'/models/buoy.dae'}
+                    texturePath={'/textures/buoy.png'}
+                    scale={[5, 5, 5]}
+                    position={[0, 0, 0]}
+                    isProp={true}
+                />
+                {/* <ColladaModel
+                    modelPath={'/models/buoy.dae'}
+                    texturePath={'/textures/buoy.png'}
+                    scale={[5, 5, 5]}
+                    position={[1, 0, 0]}
+                    isProp={true}
+                /> */}
                 <ColladaModel
                     modelPath={'/models/woollett_pool.dae'}
                     texturePath={'/textures/woollett_pool.png'}
