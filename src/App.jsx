@@ -6,6 +6,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 function App() {
   const [props, setProps] = useState([]);
   const [isMoving, setIsMoving] = useState(false);
+  const [selectedProp, setSelectedProp] = useState(null);
   const [movingPropId, setMovingPropId] = useState(null);
   const [moveOffset, setMoveOffset] = useState({ x: 0, y: 0 });
 
@@ -31,12 +32,15 @@ function App() {
 
   // Removes a prop from world by simply filtering it out from the array of props
   const removeProp = useCallback((targetId) => {
+    if (selectedProp?.id === targetId) setSelectedProp(null);  // Ensure that deleted props cannot be modified in properties panel
     setProps((currProps) => currProps.filter(prop => prop.id !== targetId));
-  }, []);
+  }, [selectedProp, setSelectedProp]);
 
-  // Handles initial grab of prop element
-  const handleMouseDown = useCallback((e, propId) => {
+  // Handles initial click/grab of prop element
+  const handleMouseDown = useCallback((e, prop) => {
     e.stopPropagation();  //
+
+    setSelectedProp(prop);  // Select prop to show its properties in properties panel
 
     const propElement = e.currentTarget;  // Grabs prop's DOM element
     const propBounds = propElement.getBoundingClientRect();
@@ -44,7 +48,7 @@ function App() {
 
     // Update states involved in moving prop
     setMoveOffset(offset);
-    setMovingPropId(propId);
+    setMovingPropId(prop.id);
     setIsMoving(true);
   }, []);
 
@@ -116,21 +120,26 @@ function App() {
 
         {/* Add Prop Panel */}
         <div className="p4 rounded-xl mb-6 flex flex-wrap gap-4 items-center justify-between">
-          <div className="flex gap-3">
-            <button
-              onClick={() => addProp("Test Prop")}
-              className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 transorm hover:scale-105 cursor-pointer"
-            >
-              Add Prop
-            </button>
+
+          <button
+            onClick={() => addProp("Test Prop")}
+            className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 transorm hover:scale-105 cursor-pointer"
+          >
+            Add Prop
+          </button>
+
+          {/* Properties Panel */}
+          <div>
+            {selectedProp !== null ? selectedProp.type + "_" + selectedProp.id + " is selected." : 'Select a Prop'}
           </div>
+
           <button
             onClick={downloadWorldFile}
             disabled={props.length === 0}
             className={`px-6 py-2 font-bold rounded-xl shadow-md transition duration-150
               ${props.length > 0
                 ? 'bg-green-500 text-white hover:bg-green-600 transform hover:scale-105 cursor-pointer'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed cursor-not-allowed'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
           >
             Generate World File
@@ -140,9 +149,7 @@ function App() {
         {/* Canvas Region */}
         <div
           ref={canvasRef}
-          className={`relative w-full h-96 border-4 border-dashed rounded-xl bg-gray-100 transition-all duration-300
-              ${isMoving ? 'border-indigo-500 shadow-2xl' : 'border-gray-300'}
-            `}
+          className={`relative w-full h-96 border-4 border-solid border-black rounded-xl bg-gray-100 transition-all duration-300`}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         >
@@ -160,6 +167,7 @@ function App() {
               prop={prop}
               onMouseDown={handleMouseDown}
               onRemoveProp={removeProp}
+              isSelected={selectedProp?.id === prop.id}
               isMoving={movingPropId === prop.id}
             />
           ))}

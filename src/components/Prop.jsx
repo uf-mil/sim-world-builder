@@ -1,13 +1,15 @@
 import { memo } from 'react';
 
-export const Prop = memo(({ prop, onMouseDown, onRemoveProp, isMoving }) => {
+export const Prop = memo(({ prop, onMouseDown, onRemoveProp, isSelected, isMoving }) => {
     return (
         <div
             className={`
-          ${isMoving ? 'opacity-75 z-50 ring-4 ring-yellow-400 cursor-grabbing' : 'z-10'} 
-        select-none absolute rounded-lg shadow-xl cursor-grab transition-all duration-300 flex items-center justify-center font-semibold text-white group bg-indigo-600 w-20 h-20 p-2 text-xs hover:bg-indigo-700`}
+                ${isSelected ? `z-50 border-4 border-yellow-400 cursor-grab` : `cursor-pointer z-10`}
+                ${isMoving ? 'opacity-75 z-50 border-4 border-yellow-400 border-dashed cursor-grabbing' : 'z-10'} 
+                select-none absolute rounded-lg shadow-xl transition-all duration-300 flex items-center justify-center font-semibold text-white group bg-indigo-600 w-20 h-20 p-2 text-xs hover:bg-indigo-700
+            `}
             style={{ left: `${prop.x}px`, top: `${prop.y}px` }}
-            onMouseDown={(e) => onMouseDown(e, prop.id)}
+            onMouseDown={(e) => onMouseDown(e, prop)}
         >
             {prop.type} (ID: {prop.id})
 
