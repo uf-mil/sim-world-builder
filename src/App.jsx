@@ -128,17 +128,12 @@ function App() {
             Add Prop
           </button>
 
-          {/* Properties Panel */}
-          <div>
-            {selectedProp !== null ? selectedProp.type + "_" + selectedProp.id + " is selected." : 'Select a Prop'}
-          </div>
-
           <button
             onClick={downloadWorldFile}
             disabled={props.length === 0}
             className={`px-6 py-2 font-bold rounded-xl shadow-md transition duration-150
               ${props.length > 0
-                ? 'bg-green-500 text-white hover:bg-green-600 transform hover:scale-105 cursor-pointer'
+                ? 'bg-green-700 text-white hover:bg-green-800 transform hover:scale-105 cursor-pointer'
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
           >
@@ -146,11 +141,32 @@ function App() {
           </button>
         </div>
 
+        {/* Properties Panel */}
+        <div className="bg-white text-black font-medium p-2 mb-2 rounded-md h-20 flex justify-center items-center flex-col">
+          {selectedProp !== null ? (
+            <>
+              <p>[ <b>{selectedProp.type + "_" + selectedProp.id}</b> is selected. ]</p>
+              <div className="flex gap-4 justify-center">
+                <div className="flex gap-2 mt-2">
+                  Vertical:
+                  <div className="bg-red-200 w-32 h-6"></div>
+                </div>
+
+                <div className="flex gap-2 mt-2">
+                  Rotation:
+                  <div className="bg-red-200 w-32 h-6"></div>
+                </div>
+              </div>
+            </>
+          ) : (<p>Select a prop.</p>)}
+        </div>
+
         {/* Canvas Region */}
         <div
           ref={canvasRef}
-          className={`relative w-full h-96 border-4 border-solid border-black rounded-xl bg-gray-100 transition-all duration-300`}
+          className={`relative w-full h-96 rounded-xl bg-gray-100 transition-all duration-300`}
           onMouseUp={handleMouseUp}
+          onMouseDown={() => { setSelectedProp(null) }}
           onMouseLeave={handleMouseUp}
         >
           {props.length === 0 && (
