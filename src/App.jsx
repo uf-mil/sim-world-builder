@@ -3,6 +3,40 @@ import { Prop } from './components/Prop';
 import { generateWorldFile } from './scripts/generateWorldFile';
 import { useState, useRef, useCallback, useEffect } from 'react';
 
+// Coordinates of pool's top left and bottom right corners
+const X_SIM_MAX = 11.35;
+const X_SIM_MIN = -11.35;
+const Y_SIM_MAX = 24.90;
+const Y_SIM_MIN = -24.90;
+
+// Used to calculate positioning on canvas to 
+const X_SIM_RANGE = X_SIM_MAX - X_SIM_MIN;
+const Y_SIM_RANGE = Y_SIM_MAX - Y_SIM_MIN;
+
+const PROP_HALF_SIZE = 40;
+
+// Converts coordinate on 2D plane of canvas into position in 3D pool in Gazebo world
+function translateCoordinates(canvasRef, containerX, containerY) {
+  // Grab basic canvas attributes
+  const rect = canvasRef.current.getBoundingClientRect();
+  const WIDTH = rect.width;
+  const HEIGHT = rect.height;
+
+  // Calculates ratio of horizontal and vertical positioning based on scaling of canvas to Gazebo world
+  const ratioX = (containerX + PROP_HALF_SIZE) / WIDTH;
+  const ratioY = (containerY + PROP_HALF_SIZE) / HEIGHT;
+
+  // Takes ratio and determines prop's position in world from it
+  const x = X_SIM_MAX - (ratioX * X_SIM_RANGE);
+  const y = Y_SIM_MAX - (ratioY * Y_SIM_RANGE);
+
+  // Returns x and y positions of new prop
+  return {
+    x: parseFloat(x.toFixed(3)),
+    y: parseFloat(y.toFixed(3)),
+  };
+}
+
 function App() {
   const [props, setProps] = useState([]);
   const [isMoving, setIsMoving] = useState(false);
@@ -20,11 +54,17 @@ function App() {
 
     const newId = nextId.current++;
 
+    // Initialize prop at center of canvas
+    const canvasCoords = { x: canvas.offsetWidth / 2 - PROP_HALF_SIZE, y: canvas.offsetHeight / 2 - PROP_HALF_SIZE }
+    const simCoords = translateCoordinates(canvasRef, canvasCoords.x, canvasCoords.y);
+
     const newProp = {
       id: newId,
       type,
-      x: canvas.offsetWidth / 2 - 40,
-      y: canvas.offsetHeight / 2 - 40
+      canvasX: canvasCoords.x,
+      canvasY: canvasCoords.y,
+      simX: simCoords.x,
+      simY: simCoords.y
     };
 
     setProps((currProps) => [...currProps, newProp]);
@@ -67,10 +107,13 @@ function App() {
     newX = Math.max(0, Math.min(newX, canvasBounds.width - 80));
     newY = Math.max(0, Math.min(newY, canvasBounds.height - 80));
 
+    // Store prop's positioning in simulation inside of the prop's data object
+    const simCoords = translateCoordinates(canvasRef, newX, newY);
+
     // Update moving prop's position in canvas!
     setProps((currProps) =>
       currProps.map((prop) =>
-        prop.id === movingPropId ? { ...prop, x: newX, y: newY } : prop
+        prop.id === movingPropId ? { ...prop, canvasX: newX, canvasY: newY, simX: simCoords.x, simY: simCoords.y } : prop
       )
     );
   }, [isMoving, movingPropId, moveOffset]);
