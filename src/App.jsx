@@ -1,7 +1,7 @@
-import './App.css'
+import './App.css';
 import { Prop } from './components/Prop';
 import { generateWorldFile } from './scripts/generateWorldFile';
-import { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useMemo, memo } from 'react';
 
 // Coordinates of pool's top left and bottom right corners
 const X_SIM_MAX = 11.35;
@@ -9,229 +9,416 @@ const X_SIM_MIN = -11.35;
 const Y_SIM_MAX = 24.90;
 const Y_SIM_MIN = -24.90;
 
-// Used to calculate positioning on canvas to 
+// Calculates valid range for prop based on pool's dimensions
 const X_SIM_RANGE = X_SIM_MAX - X_SIM_MIN;
 const Y_SIM_RANGE = Y_SIM_MAX - Y_SIM_MIN;
 
-const PROP_HALF_SIZE = 40;
+// Temporary values for testing. Gives prop object a fixed size to offset its center
+const PROP_SIZE = 80;
+const PROP_HALF_SIZE = PROP_SIZE / 2;
 
-// Converts coordinate on 2D plane of canvas into position in 3D pool in Gazebo world
+// Helper function to ensure that numbers don't carry excessive floating point error during calculations
+const roundToDecimals = (num, decimals = 9) => {
+  const factor = Math.pow(10, decimals);
+  return Math.round(num * factor) / factor;
+};
+
+// Helper function to convert coords on canvas object to coords in simulation
 function translateCoordinates(canvasRef, containerX, containerY) {
-  // Grab basic canvas attributes
   const rect = canvasRef.current.getBoundingClientRect();
   const WIDTH = rect.width;
   const HEIGHT = rect.height;
 
-  // Calculates ratio of horizontal and vertical positioning based on scaling of canvas to Gazebo world
   const ratioX = (containerX + PROP_HALF_SIZE) / WIDTH;
   const ratioY = (containerY + PROP_HALF_SIZE) / HEIGHT;
 
-  // Takes ratio and determines prop's position in world from it
   const x = X_SIM_MAX - (ratioX * X_SIM_RANGE);
   const y = Y_SIM_MAX - (ratioY * Y_SIM_RANGE);
 
-  // Returns x and y positions of new prop
   return {
     x: parseFloat(x.toFixed(3)),
     y: parseFloat(y.toFixed(3)),
   };
 }
 
+// Properties panel that appears on right of screen when a prop is selected
+const PropertiesPanel = memo(({ prop, coords }) => (
+  <aside className="absolute right-0 top-0 bottom-0 w-80 p-4 bg-white bg-opacity-90 backdrop-blur-sm shadow-2xl z-10">
+    <h3 className="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Properties</h3>
+    <div className="text-black font-medium p-2 rounded-md flex justify-center items-center flex-col">
+      <p>[ <b>{prop.type}_{prop.id}</b> is selected. ]</p>
+
+      <div className="flex gap-8 mt-4">
+        <div className="flex gap-2">
+          <span className="font-semibold">X:</span>
+          <span>{coords.simX}</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="font-semibold">Y:</span>
+          <span>{coords.simY}</span>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4 justify-center mt-4">
+        <div className="flex gap-2">
+          Vertical:
+          <div className="bg-red-200 w-32 h-6"></div>
+        </div>
+        <div className="flex gap-2">
+          Rotation:
+          <div className="bg-red-200 w-32 h-6"></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+));
+
 function App() {
-  const [props, setProps] = useState([]);
-  const [isMoving, setIsMoving] = useState(false);
-  const [selectedProp, setSelectedProp] = useState(null);
-  const [movingPropId, setMovingPropId] = useState(null);
-  const [moveOffset, setMoveOffset] = useState({ x: 0, y: 0 });
+  const [props, setProps] = useState([]);  // Tracks all props on canvas
+  const [view, setView] = useState({ scale: 1, x: 0, y: 0 });  // Tracks current scale and position on view
 
-  const canvasRef = useRef(null);  // Allows easy access to canvas' information
-  const nextId = useRef(1);  // Tracks the unique Id value that the next prop will have
+  const [selectedPropId, setSelectedPropId] = useState(null);  // Tracks the selected prop's ID
+  const [dragState, setDragState] = useState(null);  // Tracks whether the screen or a prop is being dragged (and data based on it)
+  const [liveCoords, setLiveCoords] = useState(null);  // Tracks the live-updated coordinates of the prop being dragged (to display in X/Y of properties panel)
 
-  // Creates a new prop object and appends it to the array
+  // Reference values for DOM manipulation
+  const canvasRef = useRef(null);
+  const draggedPropRef = useRef(null);
+  const nextId = useRef(1);
+
+  // Determines selected prop object based on current prop ID
+  const selectedProp = useMemo(() => {
+    return props.find(p => p.id === selectedPropId) || null;
+  }, [props, selectedPropId]);
+
+  //
+  // Functionality for handling props
+  //
+
+  // Creates a new prop at the center of the screen
   const addProp = useCallback((type) => {
+    // Grab current canvas
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // Determine new prop's unique ID
     const newId = nextId.current++;
 
-    // Initialize prop at center of canvas
-    const canvasCoords = { x: canvas.offsetWidth / 2 - PROP_HALF_SIZE, y: canvas.offsetHeight / 2 - PROP_HALF_SIZE }
-    const simCoords = translateCoordinates(canvasRef, canvasCoords.x, canvasCoords.y);
+    // Spawn a new prop at the center of the screen
+    const centerCoords = { x: canvas.offsetWidth / 2 - PROP_HALF_SIZE, y: canvas.offsetHeight / 2 - PROP_HALF_SIZE };
+    const simCoords = translateCoordinates(canvasRef, centerCoords.x, centerCoords.y);
+    const newProp = { id: newId, type, canvasX: centerCoords.x, canvasY: centerCoords.y, simX: simCoords.x, simY: simCoords.y };
 
-    const newProp = {
-      id: newId,
-      type,
-      canvasX: canvasCoords.x,
-      canvasY: canvasCoords.y,
-      simX: simCoords.x,
-      simY: simCoords.y
-    };
-
+    // Append new prop to end of props collection
     setProps((currProps) => [...currProps, newProp]);
   }, []);
 
-  // Removes a prop from world by simply filtering it out from the array of props
+  // Remove a target prop fro the colleciton of props
   const removeProp = useCallback((targetId) => {
-    if (selectedProp?.id === targetId) setSelectedProp(null);  // Ensure that deleted props cannot be modified in properties panel
+    // If the prop that is meant to be desired is selected, deselect it!
+    if (selectedPropId === targetId) setSelectedPropId(null);
+
+    // Remove the prop from the props collection
     setProps((currProps) => currProps.filter(prop => prop.id !== targetId));
-  }, [selectedProp, setSelectedProp]);
+  }, [selectedPropId]);
 
-  // Handles initial click/grab of prop element
-  const handleMouseDown = useCallback((e, prop) => {
-    e.stopPropagation();  //
+  // Moves prop around screen on mouse drag
+  const updatePropPosition = useCallback((clientX, clientY) => {
+    if (!dragState || dragState.type !== 'prop' || !draggedPropRef.current) return;
 
-    setSelectedProp(prop);  // Select prop to show its properties in properties panel
-
-    const propElement = e.currentTarget;  // Grabs prop's DOM element
-    const propBounds = propElement.getBoundingClientRect();
-    const offset = { x: e.clientX - propBounds.left, y: e.clientY - propBounds.top };
-
-    // Update states involved in moving prop
-    setMoveOffset(offset);
-    setMovingPropId(prop.id);
-    setIsMoving(true);
-  }, []);
-
-  // Handles dragging/moving prop element
-  const handleMouseMove = useCallback((e) => {
-    if (!isMoving || movingPropId === null) return;
-
+    // Grab current canvas object
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const canvasBounds = canvas.getBoundingClientRect();
-    let newX = e.clientX - canvasBounds.left - moveOffset.x;
-    let newY = e.clientY - canvasBounds.top - moveOffset.y;
 
-    // Prevent prop from being moved outside of canvas' bounds
-    newX = Math.max(0, Math.min(newX, canvasBounds.width - 80));
-    newY = Math.max(0, Math.min(newY, canvasBounds.height - 80));
+    // Convert mouse position to canvas coordinates
+    const mouseX_canvas = clientX - canvasBounds.left;
+    const mouseY_canvas = clientY - canvasBounds.top;
 
-    // Store prop's positioning in simulation inside of the prop's data object
-    const simCoords = translateCoordinates(canvasRef, newX, newY);
+    // Convert the prop's position to unscaled coordinates
+    const newX_unscaled = roundToDecimals((mouseX_canvas - view.x) / view.scale);
+    const newY_unscaled = roundToDecimals((mouseY_canvas - view.y) / view.scale);
 
-    // Update moving prop's position in canvas!
-    setProps((currProps) =>
-      currProps.map((prop) =>
-        prop.id === movingPropId ? { ...prop, canvasX: newX, canvasY: newY, simX: simCoords.x, simY: simCoords.y } : prop
-      )
-    );
-  }, [isMoving, movingPropId, moveOffset]);
+    // Adjust the prop's position in relation to the its center
+    const adjustedX = newX_unscaled - PROP_HALF_SIZE;
+    const adjustedY = newY_unscaled - PROP_HALF_SIZE;
 
-  // Handles releasing prop element after moving
-  const handleMouseUp = useCallback(() => {
-    // Simply remove instance of current prop being moved
-    if (isMoving) {
-      setIsMoving(false);
-      setMovingPropId(null);
+    // Clamp position within the bounds of the canvas
+    const clampedX = Math.max(0, Math.min(adjustedX, canvas.offsetWidth - PROP_SIZE));
+    const clampedY = Math.max(0, Math.min(adjustedY, canvas.offsetHeight - PROP_SIZE));
+
+    // Update the prop's DOM element directly (makes movement instant)
+    draggedPropRef.current.style.left = `${clampedX}px`;
+    draggedPropRef.current.style.top = `${clampedY}px`;
+
+    // Update simulation coordinates for the properties panel X/Y input
+    const simCoords = translateCoordinates(canvasRef, clampedX, clampedY);
+    setLiveCoords({
+      simX: simCoords.x,
+      simY: simCoords.y,
+      canvasX: clampedX,
+      canvasY: clampedY
+    });
+  }, [dragState, view]);
+
+  //
+  // Event Handlers
+  //
+
+  // Handle mouse clicking on prop
+  const handlePropMouseDown = useCallback((e, prop) => {
+    e.stopPropagation();
+
+    // Update selected and dragged prop to store newly selected prop
+    setSelectedPropId(prop.id);
+    draggedPropRef.current = e.currentTarget;
+
+    // Update drag state to reflect that a prop is being dragged and not the canvas
+    setDragState({
+      type: 'prop',
+      id: prop.id,
+    });
+
+    setLiveCoords({ simX: prop.simX, simY: prop.simY, canvasX: prop.canvasX, canvasY: prop.canvasY });
+  }, []);
+
+  // Handle mouse clicking on canvas
+  const handleCanvasMouseDown = useCallback((e) => {
+    // If left click occurs on the canvas itself, deselect any selected prop
+    if (e.button === 0) {
+      setSelectedPropId(null);
     }
-  }, [isMoving, movingPropId]);
 
-  useEffect(() => {
+    // If right click occurs on the canvas, start panning the screen
+    if (e.button === 2) {
+      // Prevent right click menu from popping open
+      e.preventDefault();
+
+      // Update drag state to reflect that the canvas is being dragged
+      setDragState({
+        type: 'pan',
+        startX: e.clientX,
+        startY: e.clientY,
+        viewX: view.x,
+        viewY: view.y,
+      });
+    }
+  }, [view]);
+
+  // Handles zooming in and out on canvas using the scroll wheel
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+
+    // Grabs current canvas object
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Grab the canvas' bounds and the stored attributes of the canvas (scale and current x and y positional offsets)
+    const rect = canvas.getBoundingClientRect();
+    const { scale, x, y } = view;
+
+    // Calculate the canvas' new scale based on scroll
+    const zoomFactor = 0.1;
+    const delta = e.deltaY < 0 ? 1 + zoomFactor : 1 - zoomFactor;
+    const newScale = Math.max(0.2, Math.min(5, scale * delta));
+
+    // Calculate the new mouse's position in relation to the canvas' bounds
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Determine the new x and y position based on the mouse and new scale
+    // This ensure that zoom in/out occurs in relation to the mouse's current position
+    const newX = mouseX - ((mouseX - x) * (newScale / scale));
+    const newY = mouseY - ((mouseY - y) * (newScale / scale));
+
+    // Update the values stored in view!
+    setView({ scale: newScale, x: newX, y: newY });
+  }, [view]);
+
+  //
+  // Mouse Handlers
+  //
+
+  // Update either the prop or pan x and y positions based on what drag state is active
+  const handleMouseMove = useCallback((e) => {
+    if (!dragState) return;
+
+    // If dragging, update the low-cost prop position values rather than the prop's actual properties
+    // (This avoids having to go through the entire props collection every render just to update a single prop's values)
+    if (dragState.type === 'prop') {
+      updatePropPosition(e.clientX, e.clientY);
+    }
+    else if (dragState.type === 'pan') {  // Otherwise, update the position of view to reflect the mouse's movement (allows panning of canvas)
+      const dx = e.clientX - dragState.startX;
+      const dy = e.clientY - dragState.startY;
+      setView({
+        scale: view.scale,
+        x: dragState.viewX + dx,
+        y: dragState.viewY + dy,
+      });
+    }
+  }, [dragState, view, updatePropPosition]);
+
+  // Updates the selected prop's positional properties (both canvas and simulation) on mouse release 
+  const handleMouseUp = useCallback(() => {
+    if (dragState?.type === 'prop' && liveCoords) {
+      setProps(currProps => currProps.map(prop =>
+        prop.id === dragState.id ? {
+          ...prop,
+          canvasX: liveCoords.canvasX,
+          canvasY: liveCoords.canvasY,
+          simX: liveCoords.simX,
+          simY: liveCoords.simY
+        } : prop
+      ));
+    }
+
+    // Reset values relating to dragging prop since it is no longer being dragged
+    draggedPropRef.current = null;
+    setLiveCoords(null);
+    setDragState(null);
+  }, [dragState, liveCoords]);
+
+  // Connects global mouse listeners to the DOM window
+  React.useEffect(() => {
+    if (!dragState) return;
+
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
 
-    // Remember to clean up what occurs in useEffect!
+    // Prevents opening up the context menu on right click of canvas!
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.oncontextmenu = (e) => e.preventDefault();
+    }
+
+    // Clean up listeners
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
-    }
-  }, [handleMouseMove, handleMouseUp])
+    };
+  }, [dragState, handleMouseMove, handleMouseUp]);
 
+  // Downloads world file when download button is pressed
   const downloadWorldFile = useCallback(() => {
+    // Generates a world file with the current props applied
     const worldData = generateWorldFile(props);
+
+    // Semi-round about way of forcing a download from a button since it is traditionally done using a link
+    // Essentially crerates a temporary, invisible link, auto clicks it to provoke download, and then deletes the link
     const blob = new Blob([worldData], { type: 'text/xml' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = 'generated.world';
-
-    // Force download of file using link (cannot download directly from button)
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-
     URL.revokeObjectURL(url);
-  }, [generateWorldFile, props]);
+  }, [props]);
 
   return (
-    <div className="min-h-screen p-4 sm:p-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-extrabold text-white mb-6 border-b-4 border-indigo-500 pb-2">
-          MIL Simulation World Builder
-        </h1>
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-gray-900">
 
-        {/* Add Prop Panel */}
-        <div className="p4 rounded-xl mb-6 flex flex-wrap gap-4 items-center justify-between">
+      {/* Header */}
+      <header className="flex-shrink-0 bg-gray-800 p-4 shadow-lg z-20">
+        <div className="max-w-7xl mx-auto flex flex-wrap gap-4 items-center justify-between">
+          <h1 className="text-2xl font-extrabold text-white">
+            MIL Simulation World Builder
+          </h1>
 
-          <button
-            onClick={() => addProp("Test Prop")}
-            className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 transorm hover:scale-105 cursor-pointer"
+          <div className="flex gap-4">
+            <button
+              onClick={() => addProp("Test Prop")}  // Creates a test prop on button press
+              className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 transform hover:scale-105 cursor-pointer"
+            >
+              Add Prop
+            </button>
+
+            <button
+              onClick={downloadWorldFile}  // Calls download functionality on button press
+              disabled={props.length === 0}  // Prevents download if no props have been added
+              className={`px-6 py-2 font-bold rounded-xl shadow-md transition duration-150
+                ${props.length > 0
+                  ? 'bg-green-700 text-white hover:bg-green-800 transform hover:scale-105 cursor-pointer'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+            >
+              Generate World File
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Body */}
+      <main className="flex-grow relative overflow-hidden">
+
+        {/* Full-page, interactive canvas */}
+        <div
+          ref={canvasRef}
+          className={`absolute inset-0 bg-gray-100 overflow-hidden`}
+          onWheel={handleWheel}
+          onMouseDown={handleCanvasMouseDown}
+          onMouseLeave={() => setDragState(null)}
+        >
+          {/* Displays scaled/translated viewing area of the canvas */}
+          <div
+            style={{
+              transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+              transformOrigin: '0 0',
+              width: '100%',
+              height: '100%',
+              position: 'absolute',
+              pointerEvents: dragState?.type === 'pan' ? 'none' : 'auto'
+            }}
           >
-            Add Prop
-          </button>
+            {/* Renders the borders of the basic pool shape */}
+            <div
+              className="
+                absolute inset-0 pointer-events-none
+                border-4 border-dashed border-black
+              "
+            />
 
-          <button
-            onClick={downloadWorldFile}
-            disabled={props.length === 0}
-            className={`px-6 py-2 font-bold rounded-xl shadow-md transition duration-150
-              ${props.length > 0
-                ? 'bg-green-700 text-white hover:bg-green-800 transform hover:scale-105 cursor-pointer'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
-          >
-            Generate World File
-          </button>
+            {/* Displays basic instructions when no prop is on screen*/}
+            {props.length === 0 && (
+              <div
+                className="text-center absolute inset-0 flex items-center justify-center text-gray-500 text-xl font-light pointer-events-none"
+              >
+                Click 'Add Prop' to start.
+                <br />
+                (Right-click and drag to pan the screen, Scroll to zoom in / out)
+              </div>
+            )}
+
+            {/* Renders all props in collection onto screen based on their stored canvas positions */}
+            {props.map((prop) => (
+              <Prop
+                key={prop.id}
+                prop={prop}
+                onMouseDown={(e) => handlePropMouseDown(e, prop)}
+                onRemoveProp={removeProp}
+                isSelected={selectedPropId === prop.id}
+                isMoving={dragState?.id === prop.id}
+                style={{
+                  left: `${prop.canvasX}px`,
+                  top: `${prop.canvasY}px`,
+                  position: 'absolute',
+                }}
+              />
+            ))}
+          </div>
         </div>
 
         {/* Properties Panel */}
-        <div className="bg-white text-black font-medium p-2 mb-2 rounded-md h-20 flex justify-center items-center flex-col">
-          {selectedProp !== null ? (
-            <>
-              <p>[ <b>{selectedProp.type + "_" + selectedProp.id}</b> is selected. ]</p>
-              <div className="flex gap-4 justify-center">
-                <div className="flex gap-2 mt-2">
-                  Vertical:
-                  <div className="bg-red-200 w-32 h-6"></div>
-                </div>
-
-                <div className="flex gap-2 mt-2">
-                  Rotation:
-                  <div className="bg-red-200 w-32 h-6"></div>
-                </div>
-              </div>
-            </>
-          ) : (<p>Select a prop.</p>)}
-        </div>
-
-        {/* Canvas Region */}
-        <div
-          ref={canvasRef}
-          className={`relative w-full h-96 rounded-xl bg-gray-100 transition-all duration-300`}
-          onMouseUp={handleMouseUp}
-          onMouseDown={() => { setSelectedProp(null) }}
-          onMouseLeave={handleMouseUp}
-        >
-          {props.length === 0 && (
-            <div
-              className="absolute inset-0 flex items-center justify-center text-gray-500 text-xl font-light pointer-events-none"
-            >
-              Click 'Add Prop' to start.
-            </div>
-          )}
-
-          {props.map((prop) => (
-            <Prop
-              key={prop.id}
-              prop={prop}
-              onMouseDown={handleMouseDown}
-              onRemoveProp={removeProp}
-              isSelected={selectedProp?.id === prop.id}
-              isMoving={movingPropId === prop.id}
-            />
-          ))}
-        </div>
-      </div>
+        {selectedProp !== null && (
+          <PropertiesPanel
+            prop={selectedProp}
+            coords={liveCoords || selectedProp}  // Renders live coordinates while dragging or the prop's static coordinates when not
+          />
+        )}
+      </main>
     </div>
   )
 }
