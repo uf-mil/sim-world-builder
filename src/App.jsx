@@ -42,36 +42,88 @@ function translateCoordinates(canvasRef, containerX, containerY) {
 }
 
 // Properties panel that appears on right of screen when a prop is selected
-const PropertiesPanel = memo(({ prop, coords }) => (
-  <aside className="absolute right-0 top-0 bottom-0 w-80 p-4 bg-white bg-opacity-90 backdrop-blur-sm shadow-2xl z-10">
-    <h3 className="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Properties</h3>
-    <div className="text-black font-medium p-2 rounded-md flex justify-center items-center flex-col">
-      <p>[ <b>{prop.type}_{prop.id}</b> is selected. ]</p>
+const PropertiesPanel = memo(({ prop, coords, updatePosition }) => {
+  // Initialize temporary value to current sim coords
+  const [tempX, setTempX] = useState(coords.simX);
+  const [tempY, setTempY] = useState(coords.simY);
 
-      <div className="flex gap-8 mt-4">
-        <div className="flex gap-2">
-          <span className="font-semibold">X:</span>
-          <span>{coords.simX}</span>
+  // Update temporary values when coords get changed during drag
+  React.useEffect(() => {
+    setTempX(coords.simX);
+    setTempY(coords.simY);
+  }, [coords.simX, coords.simY]);
+
+  // Attempt to update the X coord's position
+  const updateXPos = () => {
+    const numValue = parseFloat(tempX);
+
+    // If inputted value is not a proper number, reset it to its previous value
+    if (isNaN(numValue)) {
+      setTempX(coords.simX);
+    } else {  // Otherwise, update x value!
+      updatePosition(prop.id, numValue, coords.simY);
+    }
+  };
+
+  // Attempt to update the Y coord's position
+  const updateYPos = () => {
+    const numValue = parseFloat(tempY);
+
+    // If inputted value is not a proper number, reset it to its previous value
+    if (isNaN(numValue)) {
+      setTempY(coords.simY);
+    } else {  // Otherwise, update y value!
+      updatePosition(prop.id, coords.simX, numValue);
+    }
+  };
+
+  return (
+    <aside className="absolute right-0 top-0 bottom-0 w-80 p-4 bg-white bg-opacity-90 backdrop-blur-sm shadow-2xl z-10">
+      <h3 className="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Properties</h3>
+      <div className="text-black font-medium p-2 rounded-md flex justify-center items-center flex-col">
+        <p>[ <b>{prop.type} ( ID: {prop.id} )</b> is selected. ]</p>
+
+        <div className="flex gap-4 mt-4">
+          <div className="flex flex-col gap-1">
+            <label className="font-semibold text-sm">X:</label>
+            <input
+              type="number"
+              step="0.001"
+              value={tempX}
+              onChange={(e) => { setTempX(e.target.value); }}
+              onBlur={updateXPos}  // Blur is called when input field loses focus
+              onKeyDown={(e) => { if (e.key == "Enter") updateXPos(); }}  // Trigger
+              className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="font-semibold text-sm">Y:</label>
+            <input
+              type="number"
+              step="0.001"
+              value={tempY}
+              onChange={(e) => { setTempY(e.target.value); }}
+              onBlur={updateYPos}  // Blur is called when input field loses focus
+              onKeyDown={(e) => { if (e.key == "Enter") updateYPos(); }}
+              className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
         </div>
-        <div className="flex gap-2">
-          <span className="font-semibold">Y:</span>
-          <span>{coords.simY}</span>
+
+        <div className="flex flex-col gap-4 justify-center mt-4">
+          <div className="flex gap-2">
+            Vertical:
+            <div className="bg-red-200 w-32 h-6"></div>
+          </div>
+          <div className="flex gap-2">
+            Rotation:
+            <div className="bg-red-200 w-32 h-6"></div>
+          </div>
         </div>
       </div>
-
-      <div className="flex flex-col gap-4 justify-center mt-4">
-        <div className="flex gap-2">
-          Vertical:
-          <div className="bg-red-200 w-32 h-6"></div>
-        </div>
-        <div className="flex gap-2">
-          Rotation:
-          <div className="bg-red-200 w-32 h-6"></div>
-        </div>
-      </div>
-    </div>
-  </aside>
-));
+    </aside>
+  );
+});
 
 function App() {
   const [props, setProps] = useState([]);  // Tracks all props on canvas
@@ -113,14 +165,50 @@ function App() {
     setProps((currProps) => [...currProps, newProp]);
   }, []);
 
-  // Remove a target prop fro the colleciton of props
+  // Remove a target prop from the collection of props
   const removeProp = useCallback((targetId) => {
-    // If the prop that is meant to be desired is selected, deselect it!
+    // If the prop that is meant to be deleted is selected, deselect it!
     if (selectedPropId === targetId) setSelectedPropId(null);
 
     // Remove the prop from the props collection
     setProps((currProps) => currProps.filter(prop => prop.id !== targetId));
   }, [selectedPropId]);
+
+  // Updates the selected prop's attributes when user types in proper values into the X/Y input fields in properties panel
+  const handleCoordInputs = useCallback((propId, newSimX, newSimY) => {
+    // Grabs current canvas object
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Convert inputted simulation coords into usable canvas coords
+    const rect = canvas.getBoundingClientRect();
+    const WIDTH = rect.width;
+    const HEIGHT = rect.height;
+
+    const ratioX = (X_SIM_MAX - newSimX) / X_SIM_RANGE;
+    const ratioY = (Y_SIM_MAX - newSimY) / Y_SIM_RANGE;
+
+    const canvasX = (ratioX * WIDTH) - PROP_HALF_SIZE;
+    const canvasY = (ratioY * HEIGHT) - PROP_HALF_SIZE;
+
+    // Ensure that the newly inputted position falls within the canvas' bounds
+    const clampedX = Math.max(0, Math.min(canvasX, canvas.offsetWidth - PROP_SIZE));
+    const clampedY = Math.max(0, Math.min(canvasY, canvas.offsetHeight - PROP_SIZE));
+
+    // Update the sim coords based on the newly clamped canvas position
+    const finalSimCoords = translateCoordinates(canvasRef, clampedX, clampedY);
+
+    // Update the prop's attributes in the props collection
+    setProps(currProps => currProps.map(prop =>
+      prop.id === propId ? {
+        ...prop,
+        canvasX: clampedX,
+        canvasY: clampedY,
+        simX: finalSimCoords.x,
+        simY: finalSimCoords.y
+      } : prop
+    ));
+  }, []);
 
   // Moves prop around screen on mouse drag
   const updatePropPosition = useCallback((clientX, clientY) => {
@@ -306,7 +394,7 @@ function App() {
     const worldData = generateWorldFile(props);
 
     // Semi-round about way of forcing a download from a button since it is traditionally done using a link
-    // Essentially crerates a temporary, invisible link, auto clicks it to provoke download, and then deletes the link
+    // Essentially creates a temporary, invisible link, auto clicks it to provoke download, and then deletes the link
     const blob = new Blob([worldData], { type: 'text/xml' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -416,6 +504,7 @@ function App() {
           <PropertiesPanel
             prop={selectedProp}
             coords={liveCoords || selectedProp}  // Renders live coordinates while dragging or the prop's static coordinates when not
+            updatePosition={handleCoordInputs}
           />
         )}
       </main>
